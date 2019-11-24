@@ -12,9 +12,18 @@ data "aws_ami" "amzon_AMI" {
     values = ["amzn2-ami-hvm-*-x86_64-gp2"]
   }
 }
-resource "aws_eip" "static_IP_JumpSRV" {
-  instance = aws_instance.my_WebServer.id
+/*
+data "aws_instances" "aws_ec2_instance_id" {
+
+  filter {
+    name   = "tag:Name"
+    values = ["Jump_Server in ASG"]
+  }
 }
+*/
+#resource "aws_eip" "static_IP_JumpSRV" {
+#  instance = aws_elb.my_WebServer.id
+#}
 
 resource "aws_security_group" "my_Bastion_FW_rule" {
   name = "Dynamic FW rule"
@@ -46,10 +55,11 @@ resource "aws_security_group" "my_Bastion_FW_rule" {
 ### -----------Launch configuration
 resource "aws_launch_configuration" "jmp_srv_lc" {
   #name            = "WebServer-Highly-available-LC"
-  name_prefix     = "jmp_srv_lc-Highly-available-LC-"
-  image_id        = data.aws_ami.amzon_AMI.id
-  instance_type   = "t2.micro"
-  security_groups = [aws_security_group.mmy_Bastion_FW_rule.id]
+  name_prefix                 = "jmp_srv_lc-Highly-available-LC-"
+  image_id                    = data.aws_ami.amzon_AMI.id
+  instance_type               = "t2.micro"
+  security_groups             = [aws_security_group.my_Bastion_FW_rule.id]
+  associate_public_ip_address = true
 
 
 
@@ -77,7 +87,53 @@ resource "aws_autoscaling_group" "jmp_srv_asg" {
     }
   }
 }
+resource "aws_lb" "test" {
+  name               = "jumpsrv-lb-tf"
+  internal           = false
+  load_balancer_type = "network"
+  subnets            = ["${aws_subnet.public.*.id}"]
 
+  enable_deletion_protection = true
+  subnet_mapping {
+    subnet_id     = "${aws_subnet.example1.id}"
+    allocation_id = "${aws_eip.example1.id}"
+  }
+
+  subnet_mapping {
+    subnet_id     = "${aws_subnet.example2.id}"
+    allocation_id = "${aws_eip.example2.id}"
+  }
+
+  tags = {
+    Environment = "test"
+  }
+}
+/*resource "aws_elb" "jumpsrv_elb" {
+  name               = "JmpServer-HA-ELB"
+  availability_zones = [data.aws_availability_zones.available_az.names[0], data.aws_availability_zones.available_az.names[1]]
+  security_groups    = [aws_security_group.my_Bastion_FW_rule.id]
+  subnet_mapping {
+    subnet_id = "${data.aws_subnet.sn-app-1.id}"
+    allocation_id = "${aws_eip.eip-1.id}"
+  }
+  listener {
+    instance_port     = 22
+    instance_protocol = "ssh"
+    lb_port           = 22
+    lb_protocol       = "ssh"
+  }
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    target              = "SSH:22/"
+    interval            = 10
+  }
+  tags = {
+    Name = "JmpSRV-HA-ELB"
+  }
+}
+*/
 resource "aws_default_subnet" "default_az1" {
   availability_zone = data.aws_availability_zones.available_az.names[0]
 
@@ -87,6 +143,9 @@ resource "aws_default_subnet" "default_az2" {
 
 }
 
-output "webserver_instance_id" {
-  value = aws_instance.my_WebServer.id
-}
+
+/*
+output "aws_ec2_instance_id" {
+  value = data.aws_instances.aws_ec2_instance_id.ids
+
+}*/
